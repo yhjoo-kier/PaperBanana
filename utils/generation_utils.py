@@ -40,7 +40,7 @@ from pathlib import Path
 config_path = Path(__file__).parent.parent / "configs" / "model_config.yaml"
 model_config = {}
 if config_path.exists():
-    with open(config_path, "r") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         model_config = yaml.safe_load(f) or {}
 
 def get_config_val(section, key, env_var, default=""):
