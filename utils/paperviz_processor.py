@@ -110,25 +110,31 @@ class PaperVizProcessor:
         task_name = self.exp_config.task_name.lower()
         retrieval_setting = self.exp_config.retrieval_setting
 
+        # Skip retriever if results were already populated by process_queries_batch
+        already_retrieved = "top10_references" in data
+
         if exp_mode == "vanilla":
             data = await self.vanilla_agent.process(data)
             data["eval_image_field"] = f"vanilla_{task_name}_base64_jpg"
-        
+
         elif exp_mode == "dev_planner":
-            data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
+            if not already_retrieved:
+                data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
             data = await self.planner_agent.process(data)
             data = await self.visualizer_agent.process(data)
             data["eval_image_field"] = f"target_{task_name}_desc0_base64_jpg"
-        
+
         elif exp_mode == "dev_planner_stylist":
-            data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
+            if not already_retrieved:
+                data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
             data = await self.planner_agent.process(data)
             data = await self.stylist_agent.process(data)
             data = await self.visualizer_agent.process(data)
             data["eval_image_field"] = f"target_{task_name}_stylist_desc0_base64_jpg"
 
         elif exp_mode in ["dev_planner_critic", "demo_planner_critic"]:
-            data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
+            if not already_retrieved:
+                data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
             data = await self.planner_agent.process(data)
             data = await self.visualizer_agent.process(data)
             # Use max_critic_rounds from data if available, otherwise default to 3
@@ -137,7 +143,8 @@ class PaperVizProcessor:
             if "demo" in exp_mode: do_eval = False
 
         elif exp_mode in ["dev_full", "demo_full"]:
-            data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
+            if not already_retrieved:
+                data = await self.retriever_agent.process(data, retrieval_setting=retrieval_setting)
             data = await self.planner_agent.process(data)
             data = await self.stylist_agent.process(data)
             data = await self.visualizer_agent.process(data)
@@ -170,8 +177,25 @@ class PaperVizProcessor:
         do_eval: bool = True,
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
-        Batch process queries with concurrency support
+        Batch process queries with concurrency support.
+        Retriever is run once before parallelization to avoid redundant API calls.
         """
+        # Run Retriever once and share results across all candidates
+        exp_mode = self.exp_config.exp_mode
+        retrieval_setting = self.exp_config.retrieval_setting
+        needs_retrieval = exp_mode not in ("vanilla", "dev_polish", "dev_retriever")
+
+        if needs_retrieval and data_list:
+            print("[Retriever] Running retrieval once for all candidates...")
+            first_data = data_list[0]
+            first_data = await self.retriever_agent.process(first_data, retrieval_setting=retrieval_setting)
+            retrieval_keys = ("top10_references", "retrieved_examples")
+            for data in data_list[1:]:
+                for key in retrieval_keys:
+                    if key in first_data:
+                        data[key] = first_data[key]
+            print(f"[Retriever] Done. Retrieved {len(first_data.get('top10_references', []))} references.")
+
         semaphore = asyncio.Semaphore(max_concurrent)
         async def process_with_semaphore(doc):
             async with semaphore:
@@ -186,7 +210,7 @@ class PaperVizProcessor:
         all_result_list = []
         eval_dims = ["faithfulness", "conciseness", "readability", "aesthetics", "overall"]
 
-        with tqdm(total=len(tasks), desc="Processing concurrently") as pbar:
+        with tqdm(total=len(tasks), desc="Processing concurrently",ascii=True) as pbar:
             # Iterate through completed tasks returned by as_completed
             for future in asyncio.as_completed(tasks):
                 result_data = await future
@@ -195,7 +219,6 @@ class PaperVizProcessor:
 
                 for dim in eval_dims:
                     winner_key = f"{dim}_outcome"
-
                     if winner_key in result_data:
                         winners = [d.get(winner_key) for d in all_result_list]
                         total = len(winners)

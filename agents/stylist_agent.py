@@ -33,7 +33,7 @@ class StylistAgent(BaseAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.model_name = self.exp_config.model_name
+        self.model_name = self.exp_config.main_model_name
 
         # Task-specific configurations
         if self.exp_config.task_name == "plot":
@@ -75,7 +75,7 @@ class StylistAgent(BaseAgent):
         content_list = [{"type": "text", "text": user_prompt}]
 
         # Generate response
-        response_list = await generation_utils.call_gemini_with_retry_async(
+        response_list = await generation_utils.call_model_with_retry_async(
             model_name=self.model_name,
             contents=content_list,
             config=types.GenerateContentConfig(

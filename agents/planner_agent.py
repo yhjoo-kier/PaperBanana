@@ -31,7 +31,7 @@ class PlannerAgent(BaseAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.model_name = self.exp_config.model_name
+        self.model_name = self.exp_config.main_model_name
 
         # Task-specific configurations
         if "plot" in self.exp_config.task_name:
@@ -103,7 +103,7 @@ class PlannerAgent(BaseAgent):
 
         content_list.append({"type": "text", "text": user_prompt})
 
-        response_list = await generation_utils.call_gemini_with_retry_async(
+        response_list = await generation_utils.call_model_with_retry_async(
             model_name=self.model_name,
             contents=content_list,
             config=types.GenerateContentConfig(

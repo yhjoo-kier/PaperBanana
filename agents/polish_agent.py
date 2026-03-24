@@ -43,8 +43,8 @@ class PolishAgent(BaseAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.image_model_name = self.exp_config.image_model_name  # e.g., gemini-3-pro-image-preview
-        self.text_model_name = self.exp_config.model_name   # e.g., gemini-3-pro-preview
+        self.image_gen_model_name = self.exp_config.image_gen_model_name  # e.g., gemini-3-pro-image-preview
+        self.main_model_name = self.exp_config.main_model_name   # e.g., gemini-3-pro-preview
         
         # Task-specific configurations
         if self.exp_config.task_name == "plot":
@@ -77,8 +77,8 @@ class PolishAgent(BaseAgent):
         ]
 
         try:
-            response_list = await generation_utils.call_gemini_with_retry_async(
-                model_name=self.text_model_name,
+            response_list = await generation_utils.call_model_with_retry_async(
+                model_name=self.main_model_name,
                 contents=content_list,
                 config=types.GenerateContentConfig(
                     system_instruction=self.suggestion_system_prompt,
@@ -162,24 +162,40 @@ class PolishAgent(BaseAgent):
         ]
         
         # Generate polished image
+        aspect_ratio = data.get("additional_info", {}).get("rounded_ratio", "16:9")
         try:
-            response_list = await generation_utils.call_gemini_with_retry_async(
-                model_name=self.image_model_name,
-                contents=content_list,
-                config=types.GenerateContentConfig(
-                    system_instruction=self.system_prompt, # Use the simpler task definition prompt
-                    temperature=self.exp_config.temperature,
-                    candidate_count=1,
-                    max_output_tokens=50000,
-                    response_modalities=["IMAGE"],
-                    image_config=types.ImageConfig(
-                        aspect_ratio=data.get("additional_info", {}).get("rounded_ratio", "16:9"),
-                        image_size="1k",
+            if generation_utils.openrouter_client is not None:
+                image_config = {
+                    "system_prompt": self.system_prompt,
+                    "temperature": self.exp_config.temperature,
+                    "aspect_ratio": aspect_ratio,
+                    "image_size": "1k",
+                }
+                response_list = await generation_utils.call_openrouter_image_generation_with_retry_async(
+                    model_name=self.image_gen_model_name,
+                    contents=content_list,
+                    config=image_config,
+                    max_attempts=5,
+                    retry_delay=30,
+                )
+            else:
+                response_list = await generation_utils.call_gemini_with_retry_async(
+                    model_name=self.image_gen_model_name,
+                    contents=content_list,
+                    config=types.GenerateContentConfig(
+                        system_instruction=self.system_prompt,
+                        temperature=self.exp_config.temperature,
+                        candidate_count=1,
+                        max_output_tokens=50000,
+                        response_modalities=["IMAGE"],
+                        image_config=types.ImageConfig(
+                            aspect_ratio=aspect_ratio,
+                            image_size="1k",
+                        ),
                     ),
-                ),
-                max_attempts=5,
-                retry_delay=30,
-            )
+                    max_attempts=5,
+                    retry_delay=30,
+                )
             
             if response_list and response_list[0]:
                 # Convert PNG to JPG

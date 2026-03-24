@@ -68,7 +68,7 @@ class VisualizerAgent(BaseAgent):
         
         # Task-specific configurations
         if "plot" in self.exp_config.task_name:
-            self.model_name = self.exp_config.model_name
+            self.model_name = self.exp_config.main_model_name
             self.system_prompt = PLOT_VISUALIZER_AGENT_SYSTEM_PROMPT
             self.process_executor = ProcessPoolExecutor(max_workers=32)
             self.task_config = {
@@ -78,7 +78,7 @@ class VisualizerAgent(BaseAgent):
                 "max_output_tokens": 50000,
             }
             # The code below is for applying image generation models to statistics plots:
-            # self.model_name = self.exp_config.image_model_name
+            # self.model_name = self.exp_config.image_gen_model_name
             # self.system_prompt = """You are an expert statistical plot illustrator. Generate high-quality statistical plots based on user requests. Note that you should not use code, but directly generate the image."""
             # self.process_executor = None
             # self.task_config = {
@@ -89,7 +89,7 @@ class VisualizerAgent(BaseAgent):
             # }
 
         else:
-            self.model_name = self.exp_config.image_model_name
+            self.model_name = self.exp_config.image_gen_model_name
             self.system_prompt = DIAGRAM_VISUALIZER_AGENT_SYSTEM_PROMPT
             self.process_executor = None  # Not needed for diagrams
             self.task_config = {
@@ -149,42 +149,64 @@ class VisualizerAgent(BaseAgent):
                 "max_output_tokens": cfg["max_output_tokens"],
             }
             
-            if cfg["use_image_generation"] and "gemini" in self.model_name:
-                # Default to 1:1 if aspect ratio is missing
-                aspect_ratio = "1:1"
-                if "additional_info" in data and "rounded_ratio" in data["additional_info"]:
-                    aspect_ratio = data["additional_info"]["rounded_ratio"]
+            # Resolve aspect ratio for image generation
+            aspect_ratio = "1:1"
+            if "additional_info" in data and "rounded_ratio" in data["additional_info"]:
+                aspect_ratio = data["additional_info"]["rounded_ratio"]
 
-                gen_config_args["response_modalities"] = ["IMAGE"]
-                gen_config_args["image_config"] = types.ImageConfig(
-                    aspect_ratio=aspect_ratio,
-                    image_size="1k",
-                )
-            
-            if "gemini" in self.model_name:
-                response_list = await generation_utils.call_gemini_with_retry_async(
+            if cfg["use_image_generation"]:
+                if "gpt-image" in self.model_name:
+                    image_config = {
+                        "size": "1536x1024",
+                        "quality": "high",
+                        "background": "opaque",
+                        "output_format": "png",
+                    }
+                    response_list = await generation_utils.call_openai_image_generation_with_retry_async(
+                        model_name=self.model_name,
+                        prompt=prompt_text,
+                        config=image_config,
+                        max_attempts=5,
+                        retry_delay=30,
+                    )
+                elif generation_utils.openrouter_client is not None:
+                    # OpenRouter image generation
+                    image_config = {
+                        "system_prompt": self.system_prompt,
+                        "temperature": self.exp_config.temperature,
+                        "aspect_ratio": aspect_ratio,
+                        "image_size": "1k",
+                    }
+                    response_list = await generation_utils.call_openrouter_image_generation_with_retry_async(
+                        model_name=self.model_name,
+                        contents=content_list,
+                        config=image_config,
+                        max_attempts=5,
+                        retry_delay=30,
+                    )
+                else:
+                    # Gemini direct image generation
+                    gen_config_args["response_modalities"] = ["IMAGE"]
+                    gen_config_args["image_config"] = types.ImageConfig(
+                        aspect_ratio=aspect_ratio,
+                        image_size="1k",
+                    )
+                    response_list = await generation_utils.call_gemini_with_retry_async(
+                        model_name=self.model_name,
+                        contents=content_list,
+                        config=types.GenerateContentConfig(**gen_config_args),
+                        max_attempts=5,
+                        retry_delay=30,
+                    )
+            else:
+                # Code generation for plots — use the unified router
+                response_list = await generation_utils.call_model_with_retry_async(
                     model_name=self.model_name,
                     contents=content_list,
                     config=types.GenerateContentConfig(**gen_config_args),
                     max_attempts=5,
                     retry_delay=30,
                 )
-            elif "gpt-image" in self.model_name:
-                image_config = {
-                    "size": "1536x1024",
-                    "quality": "high",
-                    "background": "opaque",
-                    "output_format": "png",
-                }
-                response_list = await generation_utils.call_openai_image_generation_with_retry_async(
-                    model_name=self.model_name,
-                    prompt=prompt_text,
-                    config=image_config,
-                    max_attempts=5,
-                    retry_delay=30,
-                )
-            else:
-                raise ValueError(f"Unsupported model: {self.model_name}")
             
             if not response_list or not response_list[0]:
                 continue

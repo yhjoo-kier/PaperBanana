@@ -32,7 +32,7 @@ class RetrieverAgent(BaseAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.model_name = self.exp_config.model_name
+        self.model_name = self.exp_config.main_model_name
         
         # Task-specific configurations
         if self.exp_config.task_name == "plot":
@@ -159,7 +159,7 @@ class RetrieverAgent(BaseAgent):
         user_prompt += f"Now, based on the Target Input and the Candidate Pool, {cfg['instruction_suffix']}"
         content_list = [{"type": "text", "text": user_prompt}]
         
-        response_list = await generation_utils.call_gemini_with_retry_async(
+        response_list = await generation_utils.call_model_with_retry_async(
             model_name=self.model_name,
             contents=content_list,
             config=types.GenerateContentConfig(

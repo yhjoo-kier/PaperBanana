@@ -74,7 +74,7 @@ class VanillaAgent(BaseAgent):
         super().__init__(**kwargs)
         
         if "plot" in self.exp_config.task_name:
-            self.model_name = self.exp_config.model_name
+            self.model_name = self.exp_config.main_model_name
             self.system_prompt = PLOT_VANILLA_AGENT_SYSTEM_PROMPT
             self.process_executor = ProcessPoolExecutor(max_workers=32)
             self.task_config = {
@@ -84,7 +84,7 @@ class VanillaAgent(BaseAgent):
                 "visual_intent_label": "Visual Intent of the Desired Plot",
             }
         else:
-            self.model_name = self.exp_config.image_model_name
+            self.model_name = self.exp_config.image_gen_model_name
             self.system_prompt = DIAGRAM_VANILLA_AGENT_SYSTEM_PROMPT
             self.process_executor = None
             self.task_config = {
@@ -127,37 +127,59 @@ class VanillaAgent(BaseAgent):
             "max_output_tokens": 50000,
         }
         
+        aspect_ratio = data["additional_info"]["rounded_ratio"]
+
         if cfg["use_image_generation"]:
-            gen_config_args["response_modalities"] = ["IMAGE"]
-            gen_config_args["image_config"] = types.ImageConfig(
-                aspect_ratio=data["additional_info"]["rounded_ratio"],
-                image_size="1k",
-            )
-        
-        if "gemini" in self.model_name:
-            response_list = await generation_utils.call_gemini_with_retry_async(
+            if "gpt-image" in self.model_name:
+                image_config = {
+                    "size": "1536x1024",
+                    "quality": "high",
+                    "background": "opaque",
+                    "output_format": "png",
+                }
+                response_list = await generation_utils.call_openai_image_generation_with_retry_async(
+                    model_name=self.model_name,
+                    prompt=prompt_text[:30000],
+                    config=image_config,
+                    max_attempts=5,
+                    retry_delay=30,
+                )
+            elif generation_utils.openrouter_client is not None:
+                image_config = {
+                    "system_prompt": self.system_prompt,
+                    "temperature": self.exp_config.temperature,
+                    "aspect_ratio": aspect_ratio,
+                    "image_size": "1k",
+                }
+                response_list = await generation_utils.call_openrouter_image_generation_with_retry_async(
+                    model_name=self.model_name,
+                    contents=content_list,
+                    config=image_config,
+                    max_attempts=5,
+                    retry_delay=30,
+                )
+            else:
+                gen_config_args["response_modalities"] = ["IMAGE"]
+                gen_config_args["image_config"] = types.ImageConfig(
+                    aspect_ratio=aspect_ratio,
+                    image_size="1k",
+                )
+                response_list = await generation_utils.call_gemini_with_retry_async(
+                    model_name=self.model_name,
+                    contents=content_list,
+                    config=types.GenerateContentConfig(**gen_config_args),
+                    max_attempts=5,
+                    retry_delay=30,
+                )
+        else:
+            # Code/text generation — use the unified router
+            response_list = await generation_utils.call_model_with_retry_async(
                 model_name=self.model_name,
                 contents=content_list,
                 config=types.GenerateContentConfig(**gen_config_args),
                 max_attempts=5,
                 retry_delay=30,
             )
-        elif "gpt-image" in self.model_name:
-            image_config = {
-                "size": "1536x1024",
-                "quality": "high",
-                "background": "opaque",
-                "output_format": "png",
-            }
-            response_list = await generation_utils.call_openai_image_generation_with_retry_async(
-                model_name=self.model_name,
-                prompt=prompt_text[:30000], # OpenAI GPT-Image-1.5 only supports input string length up to 32000
-                config=image_config,
-                max_attempts=5,
-                retry_delay=30,
-            )
-        else:
-            raise ValueError(f"Unsupported model: {self.model_name}")
         
         output_key = f"vanilla_{cfg['task_name']}_base64_jpg"
         if cfg["use_image_generation"]:

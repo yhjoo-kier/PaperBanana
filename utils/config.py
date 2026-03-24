@@ -34,8 +34,8 @@ class ExpConfig:
     exp_mode: str = ""
     retrieval_setting: Literal["auto", "manual", "random", "none"] = "auto"
     max_critic_rounds: int = 3
-    model_name: str = ""
-    image_model_name: str = ""
+    main_model_name: str = ""
+    image_gen_model_name: str = ""
     work_dir: Path = Path(__file__).parent.parent
 
     timestamp: str | None = None
@@ -45,17 +45,31 @@ class ExpConfig:
         if hasattr(time, "tzset"):
             time.tzset()  # Only available on Unix; no-op guard for Windows
         
-        # Fallback to yaml config if no model_name provided
-        if not self.model_name or not self.image_model_name:
+        # Fallback to yaml config if no model name provided
+        if not self.main_model_name or not self.image_gen_model_name:
             import yaml
             config_path = self.work_dir / "configs" / "model_config.yaml"
             if config_path.exists():
                 with open(config_path, "r", encoding="utf-8") as f:
                     model_config_data = yaml.safe_load(f) or {}
-                    if not self.model_name:
-                        self.model_name = model_config_data.get("defaults", {}).get("model_name", "")
-                    if not self.image_model_name:
-                        self.image_model_name = model_config_data.get("defaults", {}).get("image_model_name", "")
+                    if not self.main_model_name:
+                        self.main_model_name = model_config_data.get("defaults", {}).get("main_model_name", "")
+                    if not self.image_gen_model_name:
+                        self.image_gen_model_name = model_config_data.get("defaults", {}).get("image_gen_model_name", "")
+        # Fallback to environment variables
+        if not self.main_model_name:
+            self.main_model_name = os.environ.get("MAIN_MODEL_NAME", "")
+        if not self.image_gen_model_name:
+            self.image_gen_model_name = os.environ.get("IMAGE_GEN_MODEL_NAME", "")
+        # Hard defaults so model name is never empty
+        if not self.main_model_name:
+            self.main_model_name = "gemini-3.1-pro-preview"
+            print(f"Warning: main_model_name not configured, falling back to '{self.main_model_name}'. "
+                  "Set it in configs/model_config.yaml or via --main-model-name.")
+        if not self.image_gen_model_name:
+            self.image_gen_model_name = "gemini-3.1-flash-image-preview"
+            print(f"Warning: image_gen_model_name not configured, falling back to '{self.image_gen_model_name}'. "
+                  "Set it in configs/model_config.yaml or via --image-gen-model-name.")
         self.timestamp = (
             time.strftime("%m%d_%H%M") if self.timestamp is None else self.timestamp
         )
