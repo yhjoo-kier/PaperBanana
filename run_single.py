@@ -67,7 +67,7 @@ async def main():
         exp_mode=args.exp_mode,
         retrieval_setting=args.retrieval_setting,
         max_critic_rounds=args.max_critic_rounds,
-        model_name=args.model_name,
+        main_model_name=args.model_name if args.model_name else "",
         work_dir=work_dir,
     )
 
