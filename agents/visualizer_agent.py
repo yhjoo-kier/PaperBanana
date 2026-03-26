@@ -175,7 +175,7 @@ class VisualizerAgent(BaseAgent):
                         "system_prompt": self.system_prompt,
                         "temperature": self.exp_config.temperature,
                         "aspect_ratio": aspect_ratio,
-                        "image_size": "1k",
+                        "image_size": "4k",
                     }
                     response_list = await generation_utils.call_openrouter_image_generation_with_retry_async(
                         model_name=self.model_name,
@@ -189,7 +189,7 @@ class VisualizerAgent(BaseAgent):
                     gen_config_args["response_modalities"] = ["IMAGE"]
                     gen_config_args["image_config"] = types.ImageConfig(
                         aspect_ratio=aspect_ratio,
-                        image_size="1k",
+                        image_size="4k",
                     )
                     response_list = await generation_utils.call_gemini_with_retry_async(
                         model_name=self.model_name,
