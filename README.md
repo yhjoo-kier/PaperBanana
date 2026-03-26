@@ -2,10 +2,10 @@
 <div align="center">Dawei Zhu, Rui Meng, Yale Song, Xiyu Wei, Sujian Li, Tomas Pfister and Jinsung yoon
 <br><br></div>
 
-</div> 
 <div align="center">
 <a href="https://huggingface.co/papers/2601.23265"><img src="assets/paper-page-xl.svg" alt="Paper page on HF"></a>
 <a href="https://huggingface.co/datasets/dwzhu/PaperBananaBench"><img src="assets/dataset-on-hf-xl.svg" alt="Dataset on HF"></a>
+<a href="https://huggingface.co/spaces/dwzhu/PaperBanana"><img src="assets/spaces-on-hf-xl.png" height="48" alt="Demo on HF Spaces"></a>
 </div>
 
 > Hi everyone! The original version of PaperBanana is already open-sourced under Google-Research as [PaperVizAgent](https://github.com/google-research/papervizagent). 
@@ -15,6 +15,7 @@ This repository forked the content of that repo and aims to keep evolving toward
 
 
 ## Latest News
+- **2026-03-24**: PaperBanana is now [hosted on Hugging Face Spaces](https://huggingface.co/spaces/dwzhu/PaperBanana). Many thanks to the Hugging Face team for their support.
 - **2026-03-11**: Published PaperBanana as a [ClawHub skill](https://clawhub.ai/skills/paperbanana) — install with `clawhub install paperbanana`.
 - **2026-03-11**: Added model selection to Streamlit UI — now supports choosing both Main Model (VLM) and Image Generation Model, with preset options and custom input.
 - **2026-03-11**: Added OpenRouter support — use models from OpenAI, Anthropic, and other providers via a unified API.
@@ -82,7 +83,19 @@ First download [PaperBananaBench](https://huggingface.co/datasets/dwzhu/PaperBan
 
 ### Launch PaperBanana
 
-#### Interactive Demo (Streamlit)
+#### Option 1: Gradio Web App (Recommended)
+
+**Try it online — no setup required:**  
+👉 **[PaperBanana on Hugging Face Spaces](https://huggingface.co/spaces/dwzhu/PaperBanana)**
+
+To get started, enter your API key (OpenRouter or Google Gemini), then configure your desired parameters (pipeline mode, number of candidates, aspect ratio, etc.), paste your method section text and figure caption, and click **Generate**.
+
+You can also run the Gradio app locally:
+```bash
+python app.py
+```
+
+#### Option 2: Interactive Demo (Streamlit)
 The easiest way to launch PaperBanana is via the interactive Streamlit demo:
 ```bash
 streamlit run demo.py
@@ -102,7 +115,7 @@ The web interface provides two main workflows:
 - Select resolution (2K/4K) and aspect ratio.
 - Download the refined high-resolution output.
 
-#### Command-Line Interface
+#### Option 3: Command-Line Interface
 You can also run PaperBanana from the command line:
 ```bash
 # Basic usage with default settings
