@@ -1,0 +1,11 @@
+HLCO (Helmholtz-Lifted Correction Operator) is a two-stage neural-operator pipeline for steady incompressible HVAC duct flow. The target Navier--Stokes solution y(x; tau, theta) = (u, v, p) is decomposed as y = y_S + Delta y, where y_S is a Stokes base solution and Delta y is the nonlinear correction.
+
+Stage 1: Stokes base provider. Given the duct geometry, boundary-condition features, and SDF representation, the system obtains y_S either from exact FEM Stokes or from a learned GINO Stokes surrogate. This stage provides the global pressure-gradient structure and no-slip wall behavior.
+
+Stage 2: HLCO correction operator. HLCO predicts only the correction Delta y. The implementation-faithful data flow is: geometry point cloud, boundary-condition features, wall-distance features, output/query coordinates, and a 64x64 signed-distance-field raster go into HLCO; y_S is used outside the HLCO module to form the correction training target y - y_S and is added back after the correction is predicted.
+
+Inside HLCO, an input GNO lifts point-cloud features to a regular QxQ latent grid, typically Q=32. A small CNN SDF encoder maps the 64x64 SDF to a topology token z_topo. Four FNO blocks with 16x16 modes and hidden width 64 process the latent grid. Spectral gating conditions the latent features on z_topo after FNO blocks. A stream-function head predicts a scalar psi on the latent grid; velocity corrections are computed by finite differences as Delta u = d psi / d y and Delta v = - d psi / d x, enforcing divergence-free correction. Pressure correction Delta p is predicted through a separate pressure head and output GNO pathway. The output GNO maps latent-grid features to arbitrary domain query points.
+
+Final reconstruction: the correction output Delta y_hat = (Delta u, Delta v, Delta p) is added to the Stokes base branch y_S outside HLCO to produce y_hat = y_S + Delta y_hat.
+
+Important diagram constraint: do not draw y_S as an internal input consumed by HLCO. Draw y_S as a parallel base-flow branch that bypasses the HLCO correction module and is summed with Delta y_hat at the final reconstruction node.

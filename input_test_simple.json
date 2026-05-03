@@ -1,0 +1,4 @@
+{
+    "method": "A five-stage pipeline: CFD generation, rendering, prompt construction, API evaluation, scoring.",
+    "caption": "Evaluation protocol overview."
+}

@@ -57,6 +57,84 @@ openai_client = None
 openrouter_client = None
 openrouter_api_key = ""
 
+# Gemini stability knobs. Defaults are intentionally conservative because
+# PaperBanana can issue several image/text calls per candidate and Gemini
+# preview/image models may stall at the socket level under load.
+GEMINI_DEFAULT_TIMEOUT_MS = 600_000  # google-genai HttpOptions.timeout is milliseconds.
+GEMINI_DEFAULT_HARD_TIMEOUT_SEC = 660.0
+GEMINI_DEFAULT_MAX_CONCURRENCY = 2
+GEMINI_RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504]
+
+
+def _get_env_int(name: str, default: int) -> int:
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        print(f"Warning: invalid {name}={value!r}; using {default}.")
+        return default
+
+
+def _get_env_float(name: str, default: float) -> float:
+    value = os.getenv(name)
+    if not value:
+        return default
+    try:
+        return float(value)
+    except ValueError:
+        print(f"Warning: invalid {name}={value!r}; using {default}.")
+        return default
+
+
+def _build_gemini_http_options():
+    """Build google-genai HTTP timeout/retry options for safer long runs."""
+    retry_options = types.HttpRetryOptions(
+        attempts=_get_env_int("GEMINI_RETRY_ATTEMPTS", 5),
+        initial_delay=_get_env_float("GEMINI_RETRY_INITIAL_DELAY_SEC", 2.0),
+        max_delay=_get_env_float("GEMINI_RETRY_MAX_DELAY_SEC", 60.0),
+        exp_base=_get_env_float("GEMINI_RETRY_EXP_BASE", 2.0),
+        jitter=_get_env_float("GEMINI_RETRY_JITTER", 1.0),
+        http_status_codes=GEMINI_RETRYABLE_STATUS_CODES,
+    )
+    return types.HttpOptions(
+        timeout=_get_env_int("GEMINI_HTTP_TIMEOUT_MS", GEMINI_DEFAULT_TIMEOUT_MS),
+        retry_options=retry_options,
+    )
+
+
+def _get_gemini_hard_timeout_sec() -> float:
+    return _get_env_float("GEMINI_HARD_TIMEOUT_SEC", GEMINI_DEFAULT_HARD_TIMEOUT_SEC)
+
+
+def _get_gemini_max_concurrency() -> int:
+    return max(1, _get_env_int("GEMINI_MAX_CONCURRENCY", GEMINI_DEFAULT_MAX_CONCURRENCY))
+
+
+gemini_semaphore = asyncio.Semaphore(_get_gemini_max_concurrency())
+
+
+def _apply_gemini_stability_config(config):
+    """Apply optional per-request Gemini stability settings.
+
+    GEMINI_SERVICE_TIER=priority enables Google's paid Priority inference when
+    the account is Tier 2/3. Older google-genai versions may not expose this
+    field; in that case we continue without failing the pipeline.
+    """
+    service_tier = os.getenv("GEMINI_SERVICE_TIER", "").strip()
+    if not service_tier:
+        return config
+
+    try:
+        setattr(config, "service_tier", service_tier)
+    except Exception as exc:
+        print(
+            "Warning: GEMINI_SERVICE_TIER was set but this google-genai "
+            f"config object does not accept service_tier: {exc}"
+        )
+    return config
+
 
 def reinitialize_clients():
     """(Re)build all API clients from current env vars / config file.
@@ -73,7 +151,10 @@ def reinitialize_clients():
 
     api_key = get_config_val("api_keys", "google_api_key", "GOOGLE_API_KEY", "")
     if api_key:
-        gemini_client = genai.Client(api_key=api_key)
+        gemini_client = genai.Client(
+            api_key=api_key,
+            http_options=_build_gemini_http_options(),
+        )
         print("Initialized Gemini Client with API Key")
         initialized.append("Gemini")
     else:
@@ -166,11 +247,21 @@ async def call_gemini_with_retry_async(
             # Use global client
             client = gemini_client
 
-            # Convert generic content list to Gemini's format right before the API call
+            # Convert generic content list to Gemini's format right before the API call.
+            # Apply optional service tier before the request and then enforce a
+            # wall-clock timeout around the SDK call. This prevents socket-level
+            # stalls from blocking the entire PaperBanana pipeline indefinitely.
             gemini_contents = _convert_to_gemini_parts(current_contents)
-            response = await client.aio.models.generate_content(
-                model=model_name, contents=gemini_contents, config=config
-            )
+            request_config = _apply_gemini_stability_config(config)
+            async with gemini_semaphore:
+                response = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=model_name,
+                        contents=gemini_contents,
+                        config=request_config,
+                    ),
+                    timeout=_get_gemini_hard_timeout_sec(),
+                )
 
             # If we are using Image Generation models to generate images
             if (

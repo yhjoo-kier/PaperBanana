@@ -1,4 +1,4 @@
-google-genai
+google-genai[aiohttp]>=1.74.0
 gradio>=5.0.0
 streamlit
 asyncio

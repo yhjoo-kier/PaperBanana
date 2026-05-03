@@ -1,0 +1,4 @@
+{
+    "method": "CFD-VisQA evaluates whether vision-language models can assess physical plausibility of CFD flow field visualizations. The benchmark includes 10 thermal-fluid scenarios with 60 OpenFOAM cases and 6 error types. Three frontier VLMs (Claude, GPT-5.4, Gemini) and a domain expert are evaluated under two conditions: setup-conditioned (with problem parameters) and image-only. The central finding is a rank reversal: with setup text, Claude leads at 88.9% accuracy; without it, the expert leads at 66.7% while Claude drops to 33.3%. This reveals that VLM performance derives from setup-image cross-referencing, not visual understanding of physics.",
+    "caption": "Graphical abstract: CFD-VisQA benchmark reveals rank reversal between VLMs and domain expert. With setup text, Claude Opus leads (88.9%); without it, the expert leads (66.7%) while Claude drops to last (33.3%). VLM strength is setup-image cross-referencing, not physics understanding."
+}
